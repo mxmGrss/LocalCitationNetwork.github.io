@@ -150,6 +150,10 @@
   </head>
   <body>
     <section id="app" v-cloak>
+      <div style="padding: 6px 12px">
+        <label>Bibliographies (.bib / .ris / .txt, multiple files): <input data-testid="research-files" type="file" multiple accept=".bib,.ris,.txt" :disabled="isLoading" @change="importResearchFiles"></label>
+        <small>DOI scan only; entries without DOI need manual resolution.</small>
+      </div>
       <b-navbar style="border-bottom: 1px solid #dbdbdb; overflow-x: auto; overflow-y: hidden;">
         <template slot="brand">
           <a class="navbar-item" href="">
@@ -204,6 +208,51 @@
                   </b-tooltip>
                 </template>
               </p>
+<section class="box" style="margin: 8px 0; max-height: 34vh; overflow: auto" aria-label="Research workspace">
+                <details>
+                  <summary><strong>Research workspace — tags, reading and provenance</strong></summary>
+                  <p>Save your work with <strong>download full network as JSON</strong>. Browser cache is optional.</p>
+                  <label>Import bibliography files (DOI scan; entries without DOI require manual resolution)
+                    <input type="file" multiple accept=".bib,.ris,.txt" @change="importResearchFiles">
+                  </label>
+                  <label>Merge with saved network
+                    <select v-model="researchMergeTarget"><option value="">Choose a tab</option><option v-for="(graph, i) in graphs" v-if="i !== currentTabIndex" :value="i">{{ graph.tabLabel }}</option></select>
+                  </label>
+                  <button class="button is-small" :disabled="isLoading || researchMergeTarget === ''" @click="mergeResearchNetworks">Merge into new tab</button>
+                  <p>Merge keeps the union of seeds and links. DOI matches only across providers; current annotations win conflicts. Export originals first if five tabs are open.</p>
+                  <p v-if="currentGraph.research && currentGraph.research.coverageNote">{{ currentGraph.research.coverageNote }}</p>
+                  <label>Filter by tag
+                    <select v-model="researchFilter" @change="changeCurrentNetworkSettings()">
+                      <option value="">All tags</option><option v-for="tag in researchLegend" :key="tag" :value="tag">{{ tag }}</option>
+                    </select>
+                  </label>
+                  <p><span v-for="tag in researchLegend" :key="tag" style="margin-right: 12px"><span :style="{color: researchTagColor(tag)}">■</span> {{ tag }}</span></p>
+                  <p>Border: thick = read; dashed = to read. Shapes keep citation roles unless a primary tag overrides them in tag color mode.</p>
+                  <template v-if="selectedArticle">
+                    <h4>{{ selectedArticle.title }}</h4>
+                    <label>Tags, separated by commas (first = primary)
+                      <input data-testid="research-tags" v-model="researchTags" @change="loadResearchStyle" style="width: 100%">
+                    </label>
+                    <label>Reading status
+                      <select data-testid="research-status" v-model="researchStatus"><option value="unread">Unread</option><option value="to-read">To read</option><option value="read">Read</option></select>
+                    </label>
+                    <label>Primary tag color <input type="color" v-model="researchColor"></label>
+                    <label>Primary tag shape
+                      <select v-model="researchShape"><option value="">Citation role</option><option>dot</option><option>box</option><option>diamond</option><option>triangle</option><option>star</option><option>hexagon</option></select>
+                    </label>
+                    <button class="button is-small" data-testid="research-save" @click="saveResearchAnnotation">Save annotation</button>
+                    <button class="button is-small" :disabled="seedArticlesIds.includes(selectedArticle.id) || isLoading" @click="promoteResearchArticle">Add to seed corpus (collected links)</button>
+                    <p v-if="researchOrigin.length">Bibliography sources: {{ researchOrigin.join(', ') }}</p>
+                    <details v-if="researchEvidence.length"><summary>Collected citation evidence ({{ researchEvidence.length }} links)</summary>
+                      <div v-for="(edge, i) in researchEvidence" :key="i">
+                        <p>{{ researchArticleTitle(edge.source) }} → {{ researchArticleTitle(edge.target) }}</p>
+                        <ul><li v-for="(proof, j) in edge.evidence" :key="j">{{ proof.provider }} — {{ proof.date }} — {{ proof.url }}</li></ul>
+                      </div>
+                    </details>
+                  </template>
+                  <p v-else>Select an article in a table or in the graph to annotate it.</p>
+                </details>
+              </section>
               <p>
                 Seed Articles ( ⏺ ) are based on
                 <template v-if="currentGraph.source.id">
@@ -1846,6 +1895,7 @@
                 <b-select v-model="citationNetworkNodeColor" @input="changeCurrentNetworkSettings()">
                   <option value="year">Year</option>
                   <option value="journal">Journal</option>
+                  <option value="tags">Primary tag</option>
                 </b-select>
               </b-field>
               <b-field label="Show source article node" label-position="on-border">
@@ -2371,6 +2421,7 @@
         window.alert('Unfortunately, this web app does not support Microsoft Internet Explorer. Please use current Firefox, Safari, Edge (>2020), or Chrome.')
       }
     </script>
+    <script src="research.js"></script>
     <script src="index.js"></script>
   </body>
 </html>

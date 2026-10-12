@@ -1,3 +1,5 @@
+> **Research workspace fork:** tags, reading status, multi-file DOI import, seed promotion, and provenance-preserving network merge. See [RESEARCH.md](RESEARCH.md).
+
 # Local Citation Network
 
 This web app aims to help scientists with their literature review using data from [OpenAlex](https://openalex.org/) (OA), [Semantic Scholar](https://semanticscholar.org/) (S2), [Crossref](https://crossref.org/) (CR) or [Zotero Cita](https://github.com/zotero-cita/zotero-cita/). Academic papers cite one another, thus creating a [citation network (= graph)](https://en.wikipedia.org/wiki/Citation_graph). Each node (= vertex) represents an article and each edge (= link / arrow) represents a citation. Citation networks are a topic of [bibliometrics, for which other great software exists as well](https://localcitationnetwork.github.io/#bibliometrics).

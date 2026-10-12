@@ -646,7 +646,9 @@ function initCitationNetwork (app, minDegreeCitedArticles = 1, minDegreeCitingAr
 
   edges = edges.flat().filter(Boolean)
 
-  articles = Array.from(articles)
+  articles = Array.from(articles).filter(a => app.researchMatches(a))
+  const visibleResearchIds = new Set(articles.map(a => a.id))
+  edges = edges.filter(e => visibleResearchIds.has(e.from) && visibleResearchIds.has(e.to))
 
   if (!articles.length) {
     app.citationNetworkIsLoading = false
@@ -659,10 +661,11 @@ function initCitationNetwork (app, minDegreeCitedArticles = 1, minDegreeCitingAr
     id: article.id,
     title: htmlTitle(app.authorStringShort(article.authors) + '. <a><em>' + article.title + '</em></a>. ' + article.journal + '. ' + article.year + '.<br>(Double click opens article: <a>' + String(app.articleLink(article)).substr(0, 28) + '...</a>)'),
     level: years.indexOf(article.year),
-    group: article[app.citationNetworkNodeColor],
+    group: app.citationNetworkNodeColor === 'tags' ? undefined : article[app.citationNetworkNodeColor],
     value: app.rankNumber(article.id),
     shape: (sourceId === article.id) ? 'diamond' : (app.seedArticlesIds.includes(article.id) ? 'dot' : (app.citedArticlesIds.includes(article.id) ? 'triangle' : (app.citingArticlesIds.includes(article.id) ? 'triangleDown' : 'hexagon'))), // TODO maybe differentiate shape between co-cited and co-citing?
-    label: article.authors[0]?.LN + '\n' + article.year
+    ...Research.style(app.currentGraph, article, app.citationNetworkNodeColor),
+    label: (article.authors[0]?.LN || 'Unknown') + '\n' + article.year
   }))
 
   // Create network
@@ -1002,6 +1005,13 @@ const vm = new Vue({
     graphs: [],
     newSourceId: undefined,
     file: undefined,
+    researchOrigins: {},
+    researchMergeTarget: '',
+    researchFilter: '',
+    researchTags: '',
+    researchStatus: 'unread',
+    researchColor: '#0072b2',
+    researchShape: '',
     listOfIds: undefined,
     listName: undefined,
     ricsRankCutoff: undefined,
@@ -1044,6 +1054,16 @@ const vm = new Vue({
     exportArticles: ['seedArticles', 'citedArticles', 'citingArticles', 'coCitedArticles', 'coCitingArticles']
   },
   computed: {
+    researchLegend: function () {
+      return [...new Set(Research.articles(this.currentGraph).flatMap(a => Research.annotation(this.currentGraph, a).tags || []))].sort()
+    },
+    researchEvidence: function () {
+      if (!this.selectedArticle) return []
+      return Research.links(this.currentGraph).filter(e => e.source === this.selectedArticle.id || e.target === this.selectedArticle.id)
+    },
+    researchOrigin: function () {
+      return this.selectedArticle ? (this.currentGraph.research?.origins?.[Research.key(this.selectedArticle)] || []) : []
+    },
     editedListOfIds: {
       get: function () { return (this.listOfIds || []).join('\n') },
       set: function (x) { this.listOfIds = x.split('\n').map(x => x.replaceAll(/\s/g, '')) }
@@ -1255,8 +1275,13 @@ const vm = new Vue({
       this.file.text().then(text => {
         this.isLoading = false
         // ... which is either a stored network file (JSON), which can be loaded directly
-        if (this.file.type === 'application/json') {
+        if (this.file.type === 'application/json' || /\.json$/i.test(this.file.name)) {
           const graphs = JSON.parse(text)
+          if (graphs && Array.isArray(graphs.nodes) && Array.isArray(graphs.edges)) {
+            this.addGraphs([Research.fromSnapshot(graphs, localCitationNetworkVersion, this.file.name)])
+            this.file = undefined
+            return true
+          }
           // However, not all JSONs loaded are necessarily from this tool
           if (Array.isArray(graphs) && graphs.every(graph => graph.localCitationNetworkVersion)) {
             this.addGraphs(graphs)
@@ -1352,6 +1377,7 @@ const vm = new Vue({
     },
     // A different node in the network or a different article in a table has been selected
     selectedArticle: function () {
+      this.loadResearchAnnotation()
       this.highlightNodes()
     },
     showAuthorNetwork: function () {
@@ -1359,6 +1385,65 @@ const vm = new Vue({
     }
   },
   methods: {
+    mergeResearchNetworks: function () {
+      try {
+        const target = this.graphs[Number(this.researchMergeTarget)]
+        if (!target || this.researchMergeTarget === '') throw new Error('Choose another network')
+        this.addGraphs([Research.merge(this.currentGraph, target, localCitationNetworkVersion)])
+        this.researchMergeTarget = ''
+      } catch (e) { this.errorMessage(e.message) }
+    },
+    loadResearchAnnotation: function () {
+      if (!this.selectedArticle) return
+      const a = Research.annotation(this.currentGraph, this.selectedArticle)
+      this.researchTags = (a.tags || []).join(', ')
+      this.researchStatus = a.status || 'unread'
+      this.loadResearchStyle()
+    },
+    loadResearchStyle: function () {
+      const tag = Research.tags(this.researchTags)[0] || ''
+      const s = this.currentGraph.research?.tagStyles?.['tag:' + tag] || {}
+      this.researchColor = s.color || Research.color(tag)
+      this.researchShape = s.shape || ''
+    },
+    saveResearchAnnotation: function () {
+      if (!this.selectedArticle) return
+      try {
+        this.$set(this.currentGraph, 'research', Research.edit(this.currentGraph, this.selectedArticle, this.researchTags, this.researchStatus, this.researchColor, this.researchShape))
+        this.saveState(true, false)
+        this.changeCurrentNetworkSettings()
+      } catch (e) { this.errorMessage(e.message) }
+    },
+    promoteResearchArticle: function () {
+      if (!this.selectedArticle) return
+      const next = Research.promote(this.currentGraph, this.selectedArticle.id)
+      this.$set(this.graphs, this.currentTabIndex, next)
+      this.selectedArticle = undefined
+      this.saveState(true, false)
+      this.init()
+    },
+    importResearchFiles: async function (event) {
+      try {
+        const files = Array.from(event.target.files)
+        const result = Research.scanFiles(await Promise.all(files.map(async f => ({ name: f.webkitRelativePath || f.name, text: await f.text() }))))
+        if (!result.ids.length) throw new Error('No DOI found. Entries without DOI are not resolved automatically.')
+        this.researchOrigins = result.origins
+        this.listOfIds = result.ids
+        this.listName = files.map(f => f.name).join(', ')
+        this.editListOfIds = true
+        if (result.empty.length) this.errorMessage('No DOI found in: ' + result.empty.join(', '))
+      } catch (e) { this.errorMessage(e.message) }
+      event.target.value = ''
+    },
+    researchMatches: function (article) {
+      return !this.researchFilter || (Research.annotation(this.currentGraph, article).tags || []).includes(this.researchFilter)
+    },
+    researchTagColor: function (tag) {
+      return this.currentGraph.research?.tagStyles?.['tag:' + tag]?.color || Research.color(tag)
+    },
+    researchArticleTitle: function (id) {
+      return Research.articles(this.currentGraph).find(a => a.id === id)?.title || id
+    },
     // Initialize graph when new tab is opened / tab is changed
     setCurrentTabIndex: function (index) {
       // Reset UI elements when tab is changed
@@ -1378,6 +1463,7 @@ const vm = new Vue({
       this.coCitedArticlesTabTablePage = 1
       this.coCitingArticlesTabTablePage = 1
 
+      this.researchFilter = ''
       this.currentTabIndex = index
       if (index !== undefined) this.init()
     },
@@ -1487,6 +1573,8 @@ const vm = new Vue({
         timestamp: Date.now(),
         localCitationNetworkVersion
       }
+      newGraph.research = { version: 1, annotations: {}, tagStyles: {}, edges: [], origins: this.researchOrigins }
+      this.researchOrigins = {}
       this.pushGraph(newGraph)
       vm.saveState(true, false)
       this.isLoading = false
@@ -1893,10 +1981,12 @@ const vm = new Vue({
           localStorage.semanticScholarAPIKey = this.semanticScholarAPIKey
         }
       } else {
-        localStorage.clear()
+        // Remove only LCN cache entries, never unrelated same-origin data.
+        ;['graphs', 'autosaveResults', 'API', 'retrieveCitedArticles', 'retrieveCitingArticles', 'semanticScholarAPIKey'].forEach(k => localStorage.removeItem(k))
       }
     },
     filterArticles: function (articles) {
+      articles = articles.filter(a => this.researchMatches(a))
       // UI-defined filters
       if (this.uiFilterType && this.uiFilterId) {
         let ids
