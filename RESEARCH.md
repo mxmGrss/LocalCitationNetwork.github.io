@@ -25,7 +25,7 @@ Open http://127.0.0.1:8000. No backend or build step is required. Online acquisi
 
 Use **download full network as JSON** and reload through **Load**. Research annotations, tag styles, origins and evidence live in the graph's research field, independently of article metadata. Browser caching is optional and size-limited. Nothing is auto-uploaded; provider requests contain selected identifiers as in upstream LCN. A new acquisition creates a new tab: merge it into your annotated tab (current tab wins) to preserve editorial choices.
 
-For imported snapshots, evidence is kept verbatim. For native LCN graphs, provenance records provider, graph timestamp and source article link; it is not a raw API-response archive. Merging covers the saved articles and known links, not all literature. Unknown-year papers stay in tables because the upstream chronological visualization omits them. Counts and rankings are local, not measures of scientific quality.
+For imported snapshots, evidence is kept verbatim. For native LCN graphs, provenance records provider, graph timestamp and source article link; it is not a raw API-response archive. Merging covers the saved articles and known links, not all literature. Resolved seeds remain visible even without collected links; undated seeds occupy an unknown-year level. Non-seed papers without a year remain in tables. Counts and rankings are local, not measures of scientific quality.
 
 ## Tests
 

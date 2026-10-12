@@ -54,6 +54,13 @@ async function main () {
     await page.evaluate(() => { vm.researchMergeTarget = 0; vm.mergeResearchNetworks() })
     await page.waitForFunction(() => vm.currentGraph.tabLabel.includes(' + '))
     assert.equal(await page.evaluate(() => Research.links(vm.currentGraph).length), 2)
+    await page.evaluate(() => vm.addGraphs([Research.fromSnapshot({ nodes: [
+      { id: 'isolated', seed: true, title: 'Isolated seed', authors: ['Test'], year: 2020 },
+      { id: 'undated', seed: true, title: 'Undated seed', authors: ['Test'] }
+    ], edges: [] }, localCitationNetworkVersion, 'Isolated seeds')]))
+    await page.waitForFunction(() => citationNetwork?.body.data.nodes.get('undated'))
+    assert.equal(await page.evaluate(() => citationNetwork.body.data.nodes.length), 2)
+    assert.equal(await page.evaluate(() => citationNetwork.body.data.edges.length), 0)
     const reports = []
     if (process.argv[2]) {
       const manifest = JSON.parse(await fs.readFile(process.argv[2], 'utf8'))
@@ -76,7 +83,8 @@ async function main () {
         await page.waitForFunction(n => vm.seedArticles.length === n, expected.seedArticles.length)
         }
         await page.waitForFunction(() => citationNetwork && !vm.citationNetworkIsLoading, null, { timeout: 30000 })
-        const measured = await page.evaluate(() => ({ nodes: Research.articles(vm.currentGraph).length, edges: Research.links(vm.currentGraph).length, resolvedSeeds: vm.seedArticles.filter(a => a.id).length, missingSeeds: vm.seedArticles.filter(a => !a.id).map(a => a.title), seeds: vm.seedArticles.length, drawnNodes: citationNetwork.body.data.nodes.length, topCited: [...vm.citedArticles].sort((a,b) => vm.citedCount(b.id)-vm.citedCount(a.id)).slice(0,5).map(a => ({title:a.title,count:vm.citedCount(a.id)})) }))
+        const measured = await page.evaluate(() => ({ nodes: Research.articles(vm.currentGraph).length, edges: Research.links(vm.currentGraph).length, resolvedSeeds: vm.seedArticles.filter(a => a.id).length, missingSeeds: vm.seedArticles.filter(a => !a.id).map(a => a.title), seeds: vm.seedArticles.length, drawnNodes: citationNetwork.body.data.nodes.length, drawnSeeds: vm.seedArticles.filter(a => citationNetwork.body.data.nodes.get(a.id)).length, topCited: [...vm.citedArticles].sort((a,b) => vm.citedCount(b.id)-vm.citedCount(a.id)).slice(0,5).map(a => ({title:a.title,count:vm.citedCount(a.id)})) }))
+        assert.equal(measured.drawnSeeds, measured.resolvedSeeds)
         if (data) { assert.equal(measured.nodes, data.seedArticles ? R.articles(data).length : data.nodes.length); assert.equal(measured.edges, data.seedArticles ? R.links(data).length : data.edges.length) }
         else { assert.ok(measured.seeds > 0); assert.ok(measured.drawnNodes > 0) }
         await page.evaluate(() => { vm.selectedArticle = vm.seedArticles[0]; vm.researchTags = 'Regression'; vm.researchStatus = 'read'; vm.saveResearchAnnotation() })

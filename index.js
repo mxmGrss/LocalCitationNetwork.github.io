@@ -574,10 +574,10 @@ function initCitationNetwork (app, minDegreeCitedArticles = 1, minDegreeCitingAr
   app.citationNetworkIsLoading = true
 
   // Filter articles according to settings
-  // Articles must have year for hierarchical layout
+  // Keep resolved seeds even without a year; unknown years occupy their own level.
   const sourceId = app.currentGraph.source.id
   const seedArticles = app.seedArticles
-    .filter(article => article.year)
+    .filter(article => article.id)
     .filter(article => (app.citationNetworkShowSource ? true : !article.isSource))
   const citedArticles = app.citedArticlesDeDuplicated
     .filter(article => article.year)
@@ -599,8 +599,8 @@ function initCitationNetwork (app, minDegreeCitedArticles = 1, minDegreeCitingAr
     .toSorted((a, b) => vm.sortCoCitingWrapper(a, b, false))
     .slice(0, app.maxCitingArticles)
 
-  // Only keep connected articles (no singletons)
-  let articles = new Set()
+  // Corpus articles must remain visible even when the collected neighborhood has no link.
+  let articles = new Set(seedArticles)
 
   // Create an array with edges
   // Edges from seedArticles
@@ -665,7 +665,7 @@ function initCitationNetwork (app, minDegreeCitedArticles = 1, minDegreeCitingAr
     value: app.rankNumber(article.id),
     shape: (sourceId === article.id) ? 'diamond' : (app.seedArticlesIds.includes(article.id) ? 'dot' : (app.citedArticlesIds.includes(article.id) ? 'triangle' : (app.citingArticlesIds.includes(article.id) ? 'triangleDown' : 'hexagon'))), // TODO maybe differentiate shape between co-cited and co-citing?
     ...Research.style(app.currentGraph, article, app.citationNetworkNodeColor),
-    label: (article.authors[0]?.LN || 'Unknown') + '\n' + article.year
+    label: (article.authors[0]?.LN || 'Unknown') + '\n' + (article.year || '?')
   }))
 
   // Create network
